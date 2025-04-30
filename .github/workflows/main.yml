@@ -1,5 +1,4 @@
-name: CI/CD to Docker Swarm on EC2
-
+name: CI/CD to Docker Swarm on EC2 #cicd 
 on:
   push:
     branches:
