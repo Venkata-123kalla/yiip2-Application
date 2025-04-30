@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  yiip2-app:
+    image: venkatamahendrakalla/yiip2-app:latest
+    container_name: yiip2-app
+    restart: always
+    ports:
+      - "80:80"   # Expose app on port 80; adjust if needed
+    environment:
+      YII_ENV: "prod"
+      # Add any other environment variables here
+
+    volumes:
+      - ./app:/var/www/html  # Optional: if you want to mount local code
