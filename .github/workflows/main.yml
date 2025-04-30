@@ -7,6 +7,7 @@ on:
 
 env:
   IMAGE_NAME: venkatamahendrakalla/yiip2-app
+  SERVICE_NAME: yiip2-service
 
 jobs:
   build-and-deploy:
@@ -21,11 +22,11 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t $IMAGE_NAME:latest .
+        docker build -t venkatamahendrakalla/yiip2-app:latest .
 
     - name: Push image to Docker Hub
       run: |
-        docker push $IMAGE_NAME:latest
+        docker push venkatamahendrakalla/yiip2-app:latest
 
     - name: Setup SSH
       uses: webfactory/ssh-agent@v0.9.0
@@ -34,17 +35,28 @@ jobs:
 
     - name: Deploy on EC2 (Docker Swarm)
       run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
           set -e
-          echo "Pulling latest image..."
+          echo "==> Pulling latest Docker image..."
           docker pull venkatamahendrakalla/yiip2-app:latest
 
-          echo "Updating Docker Swarm service..."
-          docker service update --image venkatamahendrakalla/yiip2-app:latest yiip2-service || {
-            echo "Deployment failed. Rollback starting..."
-            docker service rollback yiip2-service
-            exit 1
-          }
-
-          echo "Deployment successful!"
+          echo "==> Checking if node is a Swarm manager..."
+          if docker info | grep -q 'Swarm: active'; then
+              echo "==> Swarm is active. Updating service: yiip2-service"
+              docker service update --image venkatamahendrakalla/yiip2-app:latest yiip2-service || {
+                  echo "!!! Deployment failed. Attempting rollback..."
+                  docker service rollback yiip2-service
+                  exit 1
+              }
+              echo "==> Swarm deployment successful!"
+          else
+              echo "!!! This node is not a Swarm manager."
+              exit 1
+              
+              ## Uncomment for docker-compose fallback:
+              # echo "==> Using docker-compose fallback..."
+              # cd /home/ubuntu/your-app-directory
+              # docker-compose pull
+              # docker-compose up -d
+          fi
         EOF
