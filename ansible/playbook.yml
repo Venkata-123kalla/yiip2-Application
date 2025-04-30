@@ -1,0 +1,54 @@
+---
+- hosts: web01
+  become: yes
+  tasks:
+    - name: Install packages
+      apt:
+        name:
+          - docker.io
+          - nginx
+          - git
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/download/v2.24.1/docker-compose-linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Initialize Docker Swarm
+      shell: docker swarm init || true
+
+    - name: Copy NGINX config
+      copy:
+        src:  /etc/nginx/sites-available/18.61.64.8
+        dest: /etc/nginx/sites-available/18.61.64.8
+
+    - name: Enable NGINX config
+      file:
+        src: /etc/nginx/sites-available/18.61.64.8
+        dest: /etc/nginx/sites-enabled/18.61.64.8
+        state: link
+        force: yes
+
+    - name: Restart NGINX
+      systemd:
+        name: nginx
+        state: restarted
+
+    - name: Deploy Yii2 as Docker service
+      shell: |
+        docker service create \
+          --name yiip2_yiip2-app \
+          --publish published=8000,target=80 \
+          --replicas=1 \
+          --network=bridge \
+          venkatamahendrakalla/yiip2-app:latest || true
+
