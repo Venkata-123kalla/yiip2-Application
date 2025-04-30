@@ -1,4 +1,4 @@
-name: CI/CD Deployment #yiip application
+name: CI/CD Deployment #yiip application cicd
 
 on:
   push:
