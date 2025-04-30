@@ -1,4 +1,5 @@
-name: CI/CD to Docker Swarm on EC2 #cicd 
+name: CI/CD to Docker Swarm on EC2
+
 on:
   push:
     branches:
@@ -20,12 +21,10 @@ jobs:
       run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
     - name: Build Docker image
-      run: |
-        docker build -t venkatamahendrakalla/yiip2-app:latest .
+      run: docker build -t ${{ env.IMAGE_NAME }}:latest .
 
     - name: Push image to Docker Hub
-      run: |
-        docker push venkatamahendrakalla/yiip2-app:latest
+      run: docker push ${{ env.IMAGE_NAME }}:latest
 
     - name: Setup SSH
       uses: webfactory/ssh-agent@v0.9.0
@@ -34,28 +33,42 @@ jobs:
 
     - name: Deploy on EC2 (Docker Swarm)
       run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
           set -e
-          echo "==> Pulling latest Docker image..."
-          docker pull venkatamahendrakalla/yiip2-app:latest
+          echo "==> Logging in to EC2 and preparing environment..."
 
-          echo "==> Checking if node is a Swarm manager..."
-          if docker info | grep -q 'Swarm: active'; then
-              echo "==> Swarm is active. Updating service: yiip2-service"
-              docker service update --image venkatamahendrakalla/yiip2-app:latest yiip2-service || {
-                  echo "!!! Deployment failed. Attempting rollback..."
-                  docker service rollback yiip2-service
-                  exit 1
-              }
-              echo "==> Swarm deployment successful!"
-          else
-              echo "!!! This node is not a Swarm manager."
-              exit 1
-              
-              ## Uncomment for docker-compose fallback:
-              # echo "==> Using docker-compose fallback..."
-              # cd /home/ubuntu/your-app-directory
-              # docker-compose pull
-              # docker-compose up -d
+          echo "==> Checking Docker installation..."
+          if ! command -v docker &> /dev/null; then
+            echo "==> Docker not found. Installing..."
+            curl -fsSL https://get.docker.com | sudo sh
+            sudo usermod -aG docker ubuntu
+            newgrp docker
           fi
+
+          echo "==> Initializing Docker Swarm if needed..."
+          if ! docker info | grep -q 'Swarm: active'; then
+            docker swarm init || echo "Swarm may already be initialized."
+          fi
+
+          echo "==> Pulling latest Docker image..."
+          docker pull ${{ env.IMAGE_NAME }}:latest
+
+          echo "==> Deploying or updating Docker Swarm service..."
+          if docker service ls | grep -q ${{ env.SERVICE_NAME }}; then
+            echo "==> Service exists. Updating..."
+            docker service update --image ${{ env.IMAGE_NAME }}:latest ${{ env.SERVICE_NAME }} || {
+              echo "!!! Deployment failed. Attempting rollback..."
+              docker service rollback ${{ env.SERVICE_NAME }}
+              exit 1
+            }
+          else
+            echo "==> Service does not exist. Creating new service..."
+            docker service create \
+              --name ${{ env.SERVICE_NAME }} \
+              --publish 80:80 \
+              --restart-condition any \
+              ${{ env.IMAGE_NAME }}:latest
+          fi
+
+          echo "==> Deployment completed successfully."
         EOF
